@@ -1,0 +1,14 @@
+CREATE TABLE cal(
+   upload_timestamp TEXT,
+   sequence_no INTEGER,
+   state INTEGER,
+   tick_count  INTEGER
+
+   state_delta INTEGER,
+   tick_delta  INTEGER
+
+   timestamp TEXT,
+
+   16 bit descriptions INTEGER,
+   16 bit deltas INTEGER,
+)
