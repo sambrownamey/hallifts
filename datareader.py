@@ -57,7 +57,7 @@ def data_extractor(nparray, start, end, initial_delay=0):
         timestamp_delay = timestamp - timereader(nparray[row][0])
         timestamp_delay = timestamp_delay.total_seconds()
         if row % 100 == 0:
-            print "row", row, "Timestamp delay", timestamp_delay
+            print "row", row, #"Timestamp delay", timestamp_delay
         try:
             for i in range(10):
                 #print i
@@ -115,4 +115,11 @@ def zero_sd_finder(thecsvfile, columntolook, columntoreturn):
         if array_to_read[i][columntolook] == '0':
             returnlist.append(array_to_read[i][columntoreturn])
     return returnlist
-            
+    
+print __name__  
+if __name__ == "__main__":
+    print "running"
+    np_data_array = read_array_from_csv('Test.csv')           
+    outputarray = data_extractor(np_data_array, 0, np_data_array.shape[0])
+    write_array_to_csv(outputarray)
+                
