@@ -3,10 +3,15 @@
 import numpy as np
 import csv
 import datetime as dt
-#import sqlite3
 
-def timereader(timestr):
-    return dt.datetime.strptime(timestr, "%d/%m/%Y %H:%M")
+def timereader(timestr, formatstr="%d/%m/%Y %H:%M"):
+    return dt.datetime.strptime(timestr, formatstr)
+    
+def binlistxor(list1, list2):
+    if len(list1) != len(list2):
+        raise TypeError("Lists not the same length")
+    else:
+        return [(list1[i]+list2[i]) % 2 for i in range(len(list1))]
 
 def read_array_from_csv(csvfiletoread):
     data_array = []
@@ -30,8 +35,12 @@ def nullrowdelete(nparray):
     
 def binreader16bit(abcde):
     return map(int, list(bin(abcde)[2:].zfill(16)))
+    
+def binreader8bit(abcde):
+    return map(int, list(bin(abcde)[2:].zfill(8)))
 
-def data_extractor(nparray, start, end, initial_delay=0): 
+
+def data_extractor_cal(nparray, start, end, initial_delay=0): 
     data_array = []
     sqlite_table = []   
     timestamp = timereader(nparray[start][0])
@@ -76,7 +85,8 @@ def data_extractor(nparray, start, end, initial_delay=0):
                     delta = current_tc - previous_tc
                 #tickcount = tickcount + delta
                 state = int(nparray[row][2*i+5])
-                state_delta = state - previous_state
+                #state_delta = state - previous_state
+                state_delta = state ^ previous_state #State delta is binary XOR of the two states
                 #print "state delta", state_delta
                 timestamp = timestamp + dt.timedelta(microseconds = delta*10000)
                 newrow = []
@@ -84,13 +94,14 @@ def data_extractor(nparray, start, end, initial_delay=0):
                 newrow.append(seqnum) #Sequence number
                 newrow.append(nparray[row][2*i+5]) #State
                 newrow.append(current_tc) #Tickcount
-                newrow.append(state_delta % 65536) #State delta mod 65536
+                newrow.append(state_delta) #State delta
                 newrow.append(delta) #Tick delta
                 newrow.append(dt.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S.%f")[:-3])#timestamp
-                newrow = newrow + binreader16bit(state) #state descriptions
-                newrow = newrow + binreader16bit(state_delta % 65536) #state delta (mod 65536) descriptions
+                newrow = newrow + binreader16bit(state)[::-1] #state descriptions
+                #newrow = newrow + binreader16bit(state_delta % 65536) #state delta (mod 65536) descriptions
                 #excel_reference = ['F', 'H', 'J', 'L', 'N', 'P', 'R', 'T', 'V', 'X'][i] + str(row+1)
                 #newrow = [excel_reference] + newrow
+                newrow = newrow + binreader16bit(state_delta)[::-1]
                 previous_tc = current_tc
                 previous_state = state
                 #print newrow        
@@ -101,8 +112,8 @@ def data_extractor(nparray, start, end, initial_delay=0):
             
 #np_data_array = nullrowdelete(np_data_array)
 
-def write_array_to_csv(array, output = "output.csv"):
-    with open("output.csv", 'wb') as csvfile:
+def write_array_to_csv(array, output):
+    with open(output, 'wb') as csvfile:
         thewriter = csv.writer(csvfile)
         for row in array:
             thewriter.writerow(row)
@@ -120,6 +131,6 @@ print __name__
 if __name__ == "__main__":
     print "running"
     np_data_array = read_array_from_csv('Test.csv')           
-    outputarray = data_extractor(np_data_array, 0, np_data_array.shape[0])
-    write_array_to_csv(outputarray)
+    outputarray = data_extractor_cal(np_data_array, 0, np_data_array.shape[0])
+    write_array_to_csv(outputarray, "outputcal.csv")
                 
