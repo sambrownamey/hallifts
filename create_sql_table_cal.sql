@@ -1,4 +1,4 @@
-CREATE TABLE cal(
+CREATE TABLE test(
    upload_timestamp TEXT,
    sequence_no INTEGER,
    state INTEGER,
@@ -37,7 +37,9 @@ CREATE TABLE cal(
    d13 INTEGER,
    d14 INTEGER,
    d15 INTEGER,
-   d16 INTEGER);
+   d16 INTEGER,
+   Reset BOOLEAN
+   );
    
 .mode csv
-.import outputcal.csv cal
+.import outputtest.csv test

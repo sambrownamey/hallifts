@@ -3,8 +3,9 @@
 import numpy as np
 import csv
 import datetime as dt
+import sys
 
-def timereader(timestr, formatstr="%d/%m/%Y %H:%M"):
+def timereader(timestr, formatstr="%d/%m/%Y %H:%M"): #Change %Y to %y if necessary...
     return dt.datetime.strptime(timestr, formatstr)
     
 def binlistxor(list1, list2):
@@ -19,19 +20,19 @@ def read_array_from_csv(csvfiletoread):
         readerobj = csv.reader(csvfile)
         for row in readerobj:
             data_array.append(row)
-    return np.array(data_array)
+    return data_array
 
-"""delete null rows"""
-def nullrowdelete(nparray):
-    nullrows = []
-    for row in range(nparray.shape[0]):
-        if "NULL" in nparray[row]:
-            print "NULL found in row", row
-            nullrows.append(row)
-    print "Shape", nparray.shape
-    cleansed_array = np.delete(nparray, nullrows, axis=0)            
-    print "Shape after deleting null rows", cleansed_array.shape
-    return cleansed_array
+#"""delete null rows"""
+#def nullrowdelete(nparray):
+#    nullrows = []
+#   for row in range(nparray.shape[0]):
+#        if "NULL" in nparray[row]:
+#            print "NULL found in row", row
+#            nullrows.append(row)
+#    print "Shape", nparray.shape
+#    cleansed_array = np.delete(nparray, nullrows, axis=0)            
+#    print "Shape after deleting null rows", cleansed_array.shape
+#    return cleansed_array
     
 def binreader16bit(abcde):
     return map(int, list(bin(abcde)[2:].zfill(16)))
@@ -39,76 +40,88 @@ def binreader16bit(abcde):
 def binreader8bit(abcde):
     return map(int, list(bin(abcde)[2:].zfill(8)))
 
-
-def data_extractor_cal(nparray, start, end, initial_delay=0): 
-    data_array = []
-    sqlite_table = []   
-    timestamp = timereader(nparray[start][0])
-    seqnum = nparray[start][1]
+def data_extractor_dlrlifts(array): 
+    output = [] 
+    timestamp = timereader(array[0][0])
+    seqnum = array[0][1]
     delta = 0
     previous_tc = 0
     previous_state = 0
     #tickcount = previous_tc
-    reset_timestamp = False
-    for row in range(start, end):
-        if reset_timestamp:
-            timestamp = timereader(nparray[row][0])
-            previous_tc = int(nparray[row][6])-50
-            previous_state = 0
-            reset_timestamp = False
-        seqnumprev = seqnum
-        seqnumnew = int(nparray[row][1])
-        if seqnumprev != seqnumnew - 1:
-            pass
+    reset = True
+    line = 0
+    for row in array:
+        upload_timestamp = timereader(row[0])       
+        if reset:
+            previous_tickcount = int(row[6])
+            previous_state = int(row[5])
+            prev_dt_precise_timestamp = timereader(row[0])
+            #reset=False
+        #seqnumprev = seqnum
+        #seqnumnew = int(nparray[row][1])
+        #if seqnumprev != seqnumnew - 1:
+        #   pass
             #print "Warning: sequences off!", seqnumprev, "followed by", seqnumnew
             #print "Delay:", int(np_data_array[row][6])-int(np_data_array[row-1][24])
-        seqnum = seqnumnew
-        timestamp_delay = timestamp - timereader(nparray[row][0])
-        timestamp_delay = timestamp_delay.total_seconds()
-        if row % 100 == 0:
-            print "row", row, #"Timestamp delay", timestamp_delay
-        try:
-            for i in range(10):
-                #print i
-                current_tc = int(nparray[row][2*i+6]) 
-                """Check if the tickcount has reset"""
-                if previous_tc - current_tc == 0:
-                    print "Error: zero tickcount delta. Trying next row:", row
-                    reset_timestamp = True   
-                    break
-                if previous_tc - current_tc > 20000:
-                    delta = 65536 + current_tc - previous_tc
-                #"""Check if the tickcount looks likely to have un-reset..."""
-                elif current_tc - previous_tc > 20000:
-                        delta = current_tc - previous_tc - 65536
+        seqnum = row[1]
+        #timestamp_delay = timestamp - timereader(nparray[row][0])
+        #timestamp_delay = timestamp_delay.total_seconds()
+        #if row % 100 == 0:
+        #    print "row", row, #"Timestamp delay", timestamp_delay
+        data_pairs =  [ [row[5+2*i], row[6+2*i]] for i in range(len(row[5::2]))]
+        for pair in data_pairs:
+            if pair[0] == 'NULL' or pair[1] == 'NULL':
+                break
+            state = int(pair[0])
+            tickcount = int(pair[1])
+            if state == 0 and tickcount == 0:
+                pass
+            else:
+                tickcount_delta = (tickcount - previous_tickcount) % 65536
+                dt_tickcount_delta = dt.timedelta(microseconds = tickcount_delta*10000)
+                dt_precise_timestamp = prev_dt_precise_timestamp + dt_tickcount_delta #Try and work out the timestamp from the previous one...
+                state_delta = state ^ previous_state
+                #print "dt_precise_timestamp is", dt_precise_timestamp
+                #print "upload_timestamp is", upload_timestamp
+                #print "tickcount_delta is", tickcount_delta
+                #print "seconds difference is", (dt_precise_timestamp - upload_timestamp).total_seconds()
+                if abs((dt_precise_timestamp - upload_timestamp).total_seconds()) >= 70:
+                    for i in [-1,0,1,2,3,4,5,6,7,8,9,10,11,12]: #Guessing how many times the tickcounter has cycled
+                        tickcount_delta = tickcount - previous_tickcount + i*65536
+                        dt_tickcount_delta = dt.timedelta(microseconds = tickcount_delta*10000)
+                        dt_precise_timestamp = prev_dt_precise_timestamp + dt_tickcount_delta
+                        if abs((dt_precise_timestamp - upload_timestamp).total_seconds()) < 70:
+                            reset = False
+                            print "Tickcount cycled", i, "times at", dt_precise_timestamp
+                            break
+                        else:
+                            tickcount_delta = 0 #Resetting the tickcount delta if no match was found
+                            reset = True
                 else:
-                    delta = current_tc - previous_tc
-                #tickcount = tickcount + delta
-                state = int(nparray[row][2*i+5])
-                #state_delta = state - previous_state
-                state_delta = state ^ previous_state #State delta is binary XOR of the two states
-                #print "state delta", state_delta
-                timestamp = timestamp + dt.timedelta(microseconds = delta*10000)
+                    pass
+                if reset:
+                    print "found reset", dt_precise_timestamp, upload_timestamp, "line", line
+                    dt_precise_timestamp = upload_timestamp          
+                else:
+                    pass
                 newrow = []
-                newrow.append(dt.datetime.strftime(timereader(nparray[row][0]), "%Y-%m-%d %H:%M:%S.%f")[:-3]) #Upload timestamp
+                newrow.append(dt.datetime.strftime(upload_timestamp, "%Y-%m-%d %H:%M:%S.%f")[:-3]) #Upload timestamp
                 newrow.append(seqnum) #Sequence number
-                newrow.append(nparray[row][2*i+5]) #State
-                newrow.append(current_tc) #Tickcount
+                newrow.append(state)
+                newrow.append(tickcount)
                 newrow.append(state_delta) #State delta
-                newrow.append(delta) #Tick delta
-                newrow.append(dt.datetime.strftime(timestamp, "%Y-%m-%d %H:%M:%S.%f")[:-3])#timestamp
+                newrow.append(tickcount_delta) #Tickcount delta deduced
+                newrow.append(dt.datetime.strftime(dt_precise_timestamp, "%Y-%m-%d %H:%M:%S.%f")[:-3])#timestamp
                 newrow = newrow + binreader16bit(state)[::-1] #state descriptions
-                #newrow = newrow + binreader16bit(state_delta % 65536) #state delta (mod 65536) descriptions
-                #excel_reference = ['F', 'H', 'J', 'L', 'N', 'P', 'R', 'T', 'V', 'X'][i] + str(row+1)
-                #newrow = [excel_reference] + newrow
-                newrow = newrow + binreader16bit(state_delta)[::-1]
-                previous_tc = current_tc
+                newrow = newrow + binreader16bit(state_delta)[::-1] #state delta descriptions
+                newrow.append(reset)
+                previous_tickcount = tickcount
                 previous_state = state
-                #print newrow        
-                sqlite_table.append(newrow)
-        except ValueError:
-            print "Error encountered. Skipping to the next row." #deals with the few null rows in the csv file
-    return sqlite_table
+                prev_dt_precise_timestamp = dt_precise_timestamp       
+                output.append(newrow)
+                line += 1
+                reset = False
+    return output
             
 #np_data_array = nullrowdelete(np_data_array)
 
@@ -129,8 +142,11 @@ def zero_sd_finder(thecsvfile, columntolook, columntoreturn):
     
 print __name__  
 if __name__ == "__main__":
+    filename = raw_input('Enter input filename: ')
+    outputfilename = raw_input('Enter output filename: ')
+    print filename
     print "running"
-    np_data_array = read_array_from_csv('Test.csv')           
-    outputarray = data_extractor_cal(np_data_array, 0, np_data_array.shape[0])
-    write_array_to_csv(outputarray, "outputcal.csv")
+    np_data_array = read_array_from_csv(filename)           
+    outputarray = data_extractor_dlrlifts(np_data_array)
+    write_array_to_csv(outputarray, outputfilename)
                 
